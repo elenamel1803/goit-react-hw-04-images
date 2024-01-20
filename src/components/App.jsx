@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchImagesApi } from 'services/RequestApi';
 import { errorMessage, infoEmptyMessage } from 'services/Notiflix';
 import Searchbar from './Searchbar/Searchbar';
@@ -8,91 +8,84 @@ import Loader from './Loader/Loader';
 import Modal from './Modal/Modal';
 import { AppWrap } from './App.styled';
 
-class App extends Component {
-  state = {
-    searchValue: '',
-    page: 1,
-    images: [],
-    selectedImage: null,
-    showModal: false,
-    isLoading: false,
-    loadMore: false,
-  };
+const App = () => {
+  const [searchValue, setSearchValue] = useState('');
+  const [page, setPage] = useState(1);
+  const [images, setImages] = useState([]);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadMore, setLoadMore] = useState(false);
 
-  componentDidUpdate(_, prevState) {
-    const { searchValue, page } = this.state;
+  useEffect(() => {
+    if (!searchValue) return;
+    const fetchImages = async () => {
+      try {
+        toggleState('isLoading');
+        const { hits, totalHits } = await fetchImagesApi({ searchValue, page });
+        if (!hits.length) {
+          errorMessage();
+        }
+        setImages(prevState => [...prevState, ...hits]);
+        setLoadMore(page < Math.ceil(totalHits / 12));
+      } catch (error) {
+        setImages([]);
+        setLoadMore(false);
+        errorMessage(error);
+      } finally {
+        toggleState('isLoading');
+      }
+    };
+    fetchImages();
+  }, [searchValue, page]);
 
-    if (searchValue !== prevState.searchValue || page !== prevState.page) {
-      this.toggleState('isLoading');
-
-      fetchImagesApi({ searchValue, page })
-        .then(({ hits, totalHits }) => {
-          if (hits.length === 0) {
-            errorMessage();
-          }
-          this.setState(prevState => ({
-            images: [...prevState.images, ...hits],
-            loadMore: page < Math.ceil(totalHits / 12),
-          }));
-        })
-        .catch(error => {
-          this.setState({ loadMore: false, images: [] });
-          errorMessage(error);
-        })
-        .finally(() => this.toggleState('isLoading'));
-    }
-  }
-
-  handleFormSubmit = searchValue => {
+  const handleFormSubmit = searchValue => {
     if (!searchValue.trim()) {
-      this.setState({
-        images: [],
-        loadMore: false,
-      });
+      setImages([]);
+      setLoadMore(false);
       return infoEmptyMessage();
     }
-    this.setState({
-      searchValue,
-      page: 1,
-      images: [],
-    });
+    setSearchValue(searchValue);
+    setPage(1);
+    setImages([]);
   };
 
-  handleImageClick = selectedImage => {
-    this.setState({ selectedImage });
-    this.toggleState('showModal');
+  const handleImageClick = selectedImage => {
+    setSelectedImage(selectedImage);
+    toggleState('showModal');
   };
 
-  handleLoadMoreClick = () => {
-    this.setState(prevState => ({ page: prevState.page + 1 }));
+  const handleLoadMoreClick = () => {
+    setPage(prevState => prevState + 1);
   };
 
-  toggleState = key => {
-    this.setState(prevState => ({ [key]: !prevState[key] }));
+  const toggleState = key => {
+    switch (key) {
+      case 'showModal':
+        setShowModal(prevState => !prevState);
+        break;
+      case 'isLoading':
+        setIsLoading(prevState => !prevState);
+        break;
+      default:
+        break;
+    }
   };
 
-  render() {
-    const { showModal, images, isLoading, selectedImage, loadMore } =
-      this.state;
+  return (
+    <AppWrap>
+      <Searchbar onSubmit={handleFormSubmit} />
 
-    return (
-      <AppWrap>
-        <Searchbar onSubmit={this.handleFormSubmit} />
+      <ImageGallery images={images} onImageClick={handleImageClick} />
 
-        <ImageGallery images={images} onImageClick={this.handleImageClick} />
+      {(isLoading && <Loader />) ||
+        (loadMore && <Button onClick={handleLoadMoreClick} />)}
 
-        {(isLoading && <Loader />) ||
-          (loadMore && <Button onClick={this.handleLoadMoreClick} />)}
-
-        {showModal && (
-          <Modal
-            image={selectedImage}
-            onClose={() => this.toggleState('showModal')}
-          />
-        )}
-      </AppWrap>
-    );
-  }
-}
+      {showModal && (
+        <Modal image={selectedImage} onClose={() => toggleState('showModal')} />
+      )}
+    </AppWrap>
+  );
+};
 
 export default App;
